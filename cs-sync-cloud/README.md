@@ -30,6 +30,16 @@ This is much faster than copying entire files because it only sends what actuall
 ### 4. **Updates Remote Branch**
 Your changes appear on a timestamped branch in the remote sandbox (e.g., `crafting/sync/20251023120000`), and the remote workspace automatically switches to that branch.
 
+## Installation
+
+Install this as a CS CLI extension:
+
+```bash
+cs extensions install https://github.com/crafting-demo/code-sync.git --subdir cs-sync-cloud
+```
+
+This will make the `sync-cloud` command available through the `cs` CLI.
+
 ## When to Use It
 
 - You're developing code locally but need to test it in a cloud environment
@@ -39,11 +49,13 @@ Your changes appear on a timestamped branch in the remote sandbox (e.g., `crafti
 
 ## How to Use It
 
+Run from within your git repository:
+
 ```bash
-cs-sync-cloud
+cs sync-cloud
 ```
 
-The script will:
+The command will:
 - Prompt you to select a target sandbox (unless `CRAFTING_SANDBOX_WORKSPACE` is set)
 - Automatically sync all your uncommitted changes
 - Show you what's happening along the way
