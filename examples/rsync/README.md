@@ -29,16 +29,16 @@ Common rsync flags:
 
 **Sync a single file:**
 ```bash
-cs rsync ./rsync/README.md lab/remote-code-demo/app:remote-target/rsync/ --org eng
+cs rsync ./rsync/README.md lab/remote-code-demo/app:remote-target/ --org eng
 ```
 
 **Sync an entire directory (recursive):**
 ```bash
-cs rsync ./rsync lab/remote-code-demo/app:remote-target/rsync/ --org eng -- -a
+cs rsync ./rsync lab/remote-code-demo/app:remote-target/ --org eng -- -a
 ```
 
 **Sync with verbose output:**
 ```bash
-cs rsync ./rsync lab/remote-code-demo/app:remote-target/rsync/ --org eng -- -av
+cs rsync ./rsync lab/remote-code-demo/app:remote-target/ --org eng -- -av
 ```
 
