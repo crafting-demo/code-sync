@@ -1,0 +1,113 @@
+#!/bin/zsh
+
+function usage() {
+    cat <<EOF
+This extension is supposed to be run from the local machine:
+- Sync local changes to the remote sandbox
+
+Usage 1: Sync changes and/or build/deploy.
+  cs sync-cloud         # this syncs changes only
+
+When running interactively, it will prompt for the target sandbox.
+For automation, the env CRAFTING_SANDBOX_WORKSPACE can be specified as:
+  SANDBOX_NAME or SANDBOX_NAME/WORKSPACE_NAME.
+EOF
+    exit 2
+}
+
+function fatal() {
+    echo "$@" >&2
+    exit 1
+}
+
+function cs_cli() {
+    cs "$@"
+}
+
+CMD="${0:t}"
+case "$CMD" in
+    cs-sync-cloud) CMD_FN=sync_git_diff ;;
+    *) usage ;;
+esac
+
+# Find out the current git remote.
+LOCAL_GIT_REMOTE="$(git remote get-url --push origin)"
+[[ -n "$LOCAL_GIT_REMOTE" ]] || fatal "Unknown git remote 'origin': is current directory in a git working directory?"
+# Find the repository name by trimming suffix .git and possible prefixes like https://github.com/ or git@github.com:
+_LOCAL_GIT_REPO="${LOCAL_GIT_REMOTE%.git}"
+_LOCAL_GIT_REPO="${_LOCAL_GIT_REPO#https://github.com/}"
+_LOCAL_GIT_REPO="${_LOCAL_GIT_REPO#git@github.com:}"
+_LOCAL_GIT_REPO="${_LOCAL_GIT_REPO:l}"
+
+_WS_SELECT_OUT="$(cs_cli select workspace -d / "$CRAFTING_SANDBOX_WORKSPACE")" || exit 1
+# It will be ORG/SANDBOX/WORKSPACE
+export CRAFTING_SANDBOX_ORG="${_WS_SELECT_OUT%%/*}"
+REMOTE="${_WS_SELECT_OUT#*/}"
+
+SYS_DNS_SUFFIX="$(cs_cli info --system -o json | jq -cMr '.sys_dns_suffix')"
+[[ -n "$SYS_DNS_SUFFIX" ]] || SYS_DNS_SUFFIX="$SANDBOX_SYSTEM_DNS_SUFFIX"
+[[ -n "$SYS_DNS_SUFFIX" ]] || fatal "Unable to get system information."
+
+SANDBOX_JSON="$(cs_cli sandbox show "${REMOTE%%/*}" -o json)"
+SANDBOX_NAME="$(jq -cMr '.meta.name' <<<"$SANDBOX_JSON")"
+
+# "REMOTE" should be SANDBOX/WORKSPACE, but if it's only SANDBOX
+# Use the first workspace.
+_JQ_WS_QUERY='.spec.workloads[]|select(.workspace != null)'
+[[ "${REMOTE#*/}" == "$REMOTE" ]] || _JQ_WS_QUERY="$_JQ_WS_QUERY"'|select(.name == "'"${REMOTE#*/}"'")'
+WORKSPACE_JSON="$(jq -cM "[$_JQ_WS_QUERY]|.[0]" <<<"$SANDBOX_JSON")"
+WORKSPACE="$(jq -cMr '.name' <<<"$WORKSPACE_JSON")"
+
+# Match the checkout using the local git remote.
+REMOTE_GIT_DIR="$(jq -cMr '[.workspace.spec.checkouts[]|{"path":.path, "repo":.repo.git|ltrimstr("git@github.com:")|rtrimstr(".git")|ascii_downcase}|select(.repo == "'"$_LOCAL_GIT_REPO"'")]|.[0].path' <<<"$WORKSPACE_JSON" 2>/dev/null)"
+[[ -n "$REMOTE_GIT_DIR" && "$REMOTE_GIT_DIR" != "null" ]] || fatal "No matching checkout found in '$REMOTE' with git repo '$LOCAL_GIT_REMOTE'"
+
+# Generate the final git URL in the workspace.
+WORKSPACE_GIT_URL="owner@${WORKSPACE}--${SANDBOX_NAME}-${CRAFTING_SANDBOX_ORG}${SYS_DNS_SUFFIX}:${REMOTE_GIT_DIR}"
+
+function sync_git_diff() {
+    local changed_files
+    
+    # Find the list of local changes.
+    changed_files="$(git status -uall -s --porcelain=v1)"
+
+    local br_time="$(date -u +%Y%m%d%H%M%S)"
+    local backup_br="crafting/backup/${br_time}"
+    local sync_br="crafting/sync/${br_time}"
+
+    # Directly push to the dedicated branch for Crafting sync.
+    git push --force "$WORKSPACE_GIT_URL" "HEAD:refs/heads/${sync_br}"
+
+    # Make a temporary branch if there's any changes on the remote.
+    cat <<EOF | cs_cli ssh -W "$REMOTE" -- -T bash -e
+cd "$REMOTE_GIT_DIR"
+if [[ -n "\$(git status -uall -s)" ]]; then
+    echo "Backing up remote changes to branch ${backup_br} ..."
+    CUR_BR="\$(git rev-parse --abbrev-ref HEAD)"
+    CUR_COMMIT="\$(git rev-parse HEAD)"
+    git branch -D ${backup_br} 2>/dev/null || true
+    git checkout -b ${backup_br}
+    git add .
+    git commit -m "Backup BR=\$CUR_BR COMMIT=\$CUR_COMMIT
+
+Restore using:
+    git checkout -- .
+    git clean -d -f
+    git checkout \$CUR_BR
+    git reset \$CUR_COMMIT
+    git merge ${backup_br} --no-commit
+    git reset \$CUR_COMMIT
+"
+fi
+git checkout ${sync_br} --force
+EOF
+
+    [[ -z "$changed_files" ]] || {
+        local git_diff="$(git diff --binary)"
+        [[ -z "$git_diff" ]] || cs_cli ssh -W "$REMOTE" -- -T "git -C /home/owner/$REMOTE_GIT_DIR apply -" <<<"$git_diff"
+        local new_files="$(grep -E '^\?\?' <<<"$changed_files" | sed -r 's/^\?\?[[:space:]]+//')"
+        [[ -z "$new_files" ]] || xargs bsdtar -c <<<"$new_files" | cs_cli ssh -W "$REMOTE" -- -T "tar -C $REMOTE_GIT_DIR -x"
+    }
+}
+
+"$CMD_FN" "$@"
