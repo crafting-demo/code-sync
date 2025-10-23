@@ -1,0 +1,1 @@
+sudo mkdir -p /etc/skel.sandbox/.vscode-remote/extensions && sudo cp -r ~/.vscode-remote/extensions/* /etc/skel.sandbox/.vscode-remote/extensions/
