@@ -106,7 +106,7 @@ EOF
         local git_diff="$(git diff --binary)"
         [[ -z "$git_diff" ]] || cs_cli ssh -W "$REMOTE" -- -T "git -C /home/owner/$REMOTE_GIT_DIR apply -" <<<"$git_diff"
         local new_files="$(grep -E '^\?\?' <<<"$changed_files" | sed -r 's/^\?\?[[:space:]]+//')"
-        [[ -z "$new_files" ]] || xargs bsdtar -c <<<"$new_files" | cs_cli ssh -W "$REMOTE" -- -T "tar -C $REMOTE_GIT_DIR -x"
+        [[ -z "$new_files" ]] || xargs bsdtar --disable-copyfile -c <<<"$new_files" | cs_cli ssh -W "$REMOTE" -- -T "tar -C $REMOTE_GIT_DIR -x"
     }
 }
 
