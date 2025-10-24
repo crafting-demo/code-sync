@@ -7,4 +7,4 @@ $ cs scp LOCAL-PATH SANDBOX/WORKSPACE:REMOTE-PATH
 $ cs scp SANDBOX/WORKSPACE:REMOTE-PATH LOCAL-PATH
 ```
 
-Crafting demo `cs scp README.md lab/remote-code-demo/app:remote-target/scp`
+Crafting demo `cs scp README.md remote-code-demo/app:remote-target/scp`

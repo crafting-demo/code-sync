@@ -6,4 +6,4 @@ CS Mutagen opens two-way real-time sync between a directory on your local drive 
 
 `$ cs mutagen LOCAL-PATH SANDBOX/WORKSPACE:REMOTE-PATH`
 
-Crafting Demo `cs mutagen . lab/remote-code-demo/app:remote-target`
+Crafting Demo `cs mutagen . remote-code-demo/app:remote-target`
